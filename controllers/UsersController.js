@@ -5,7 +5,6 @@
  * Date: 2025-01-24
  */
 
-import { ObjectId } from 'mongodb';
 import sha1 from 'sha1';
 import dbClient from '../utils/db';
 
