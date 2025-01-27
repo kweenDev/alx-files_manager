@@ -8,8 +8,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import { ObjectId } from 'mongodb';
-import dbClient from '../utils/db';
 import redisClient from '../utils/redis';
+import dbClient from '../utils/db';
 
 class FilesController {
   /**
@@ -30,32 +30,39 @@ class FilesController {
       }
 
       const {
-        name, type, parentId = 0, isPublic = false, data,
+        name, type, parentId = '0', isPublic = false, data,
       } = req.body;
 
       if (!name) {
         return res.status(400).json({ error: 'Missing name' });
       }
+
       if (!type || !['folder', 'file', 'image'].includes(type)) {
         return res.status(400).json({ error: 'Missing or invalid type' });
       }
+
       if (type !== 'folder' && !data) {
         return res.status(400).json({ error: 'Missing data' });
       }
 
       const filesCollection = dbClient.db.collection('files');
-      if (parentId !== 0) {
+      if (parentId !== '0') {
+        if (!ObjectId.isValid(parentId)) {
+          return res.status(400).json({ error: 'Parent not found' });
+        }
+
         const parentFile = await filesCollection.findOne({ _id: new ObjectId(parentId) });
         if (!parentFile) {
           return res.status(400).json({ error: 'Parent not found' });
         }
+
         if (parentFile.type !== 'folder') {
           return res.status(400).json({ error: 'Parent is not a folder' });
         }
       }
 
       const fileDocument = {
-        userId,
+        userId: new ObjectId(userId),
         name,
         type,
         isPublic,
@@ -107,14 +114,18 @@ class FilesController {
         return res.status(404).json({ error: 'Not found' });
       }
 
-      const file = await dbClient.db.collection('files').findOne({ _id: new ObjectId(id), userId });
+      const file = await dbClient.db.collection('files').findOne({
+        _id: new ObjectId(id),
+        userId: new ObjectId(userId),
+      });
+
       if (!file) {
         return res.status(404).json({ error: 'Not found' });
       }
 
       return res.status(200).json({
         id: file._id.toString(),
-        userId: file.userId,
+        userId: file.userId.toString(),
         name: file.name,
         type: file.type,
         isPublic: file.isPublic,
@@ -149,13 +160,11 @@ class FilesController {
       const filter = { userId: new ObjectId(userId) };
       if (parentId !== '0') {
         if (!ObjectId.isValid(parentId)) {
-          // Invalid parentId, return empty array
-          return res.status(200).json([]);
+          return res.status(200).json([]); // Invalid parentId, return empty array
         }
         filter.parentId = new ObjectId(parentId);
       }
 
-      // Query database with pagination
       const files = await dbClient.db
         .collection('files')
         .find(filter)
@@ -163,7 +172,6 @@ class FilesController {
         .limit(filesPerPage)
         .toArray();
 
-      // Format response
       const result = files.map((file) => ({
         id: file._id.toString(),
         userId: file.userId.toString(),
