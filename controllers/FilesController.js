@@ -125,6 +125,60 @@ class FilesController {
       return res.status(500).json({ error: 'Internal server error' });
     }
   }
+
+  /**
+   * Lists files based on parentId and pagination.
+   * @param {Request} req - The HTTP request object.
+   * @param {Response} res - The HTTP response object.
+   */
+  static async getIndex(req, res) {
+    try {
+      const token = req.header('X-Token');
+      if (!token) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const userId = await redisClient.get(`auth_${token}`);
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const { parentId = '0', page = 0 } = req.query;
+      const filesPerPage = 20;
+
+      const filter = { userId: new ObjectId(userId) };
+      if (parentId !== '0') {
+        if (!ObjectId.isValid(parentId)) {
+          // Invalid parentId, return empty array
+          return res.status(200).json([]);
+        }
+        filter.parentId = new ObjectId(parentId);
+      }
+
+      // Query database with pagination
+      const files = await dbClient.db
+        .collection('files')
+        .find(filter)
+        .skip(parseInt(page, 10) * filesPerPage)
+        .limit(filesPerPage)
+        .toArray();
+
+      // Format response
+      const result = files.map((file) => ({
+        id: file._id.toString(),
+        userId: file.userId.toString(),
+        name: file.name,
+        type: file.type,
+        isPublic: file.isPublic,
+        parentId: file.parentId,
+      }));
+
+      return res.status(200).json(result);
+    } catch (error) {
+      console.error('Error in getIndex:', error.message);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
 }
 
 export default FilesController;
