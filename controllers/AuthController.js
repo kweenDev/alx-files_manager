@@ -12,25 +12,29 @@ import dbClient from '../utils/db';
 
 class AuthController {
   /**
-     * Signs in a user and generates an authentication token.
-     * @param {Request} req - The HTTP request object.
-     * @param {Response} res - The HTTP response object.
-     */
+ * Signs in a user and generates an authentication token.
+ * Handles invalid Base64 content, unknown email, and wrong password.
+ * @param {Request} req - The HTTP request object.
+ * @param {Response} res - The HTTP response object.
+ */
   static async getConnect(req, res) {
-    const authHeader = req.headers('Authorization');
-    if (!authHeader || !authHeader.startswith('Basic ')) {
+    const authHeader = req.header('Authorization');
+    if (!authHeader || !authHeader.startsWith('Basic ')) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
     try {
+    // Decode Base64 credentials
       const base64Credentials = authHeader.split(' ')[1];
       const decodedCredentials = Buffer.from(base64Credentials, 'base64').toString('utf-8');
-      const [email, password] = decodedCredentials.split(':');
 
+      // Extract email and password
+      const [email, password] = decodedCredentials.split(':');
       if (!email || !password) {
-        throw new Error();
+        throw new Error('Invalid credentials format');
       }
 
+      // Hash the password and find the user in the database
       const hashedPassword = sha1(password);
       const user = await dbClient.db.collection('users').findOne({ email, password: hashedPassword });
 
@@ -38,11 +42,12 @@ class AuthController {
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
+      // Generate token and store it in Redis
       const token = uuidv4();
       await redisClient.set(`auth_${token}`, user._id.toString(), 24 * 3600);
 
       return res.status(200).json({ token });
-    } catch (err) {
+    } catch (error) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
   }
